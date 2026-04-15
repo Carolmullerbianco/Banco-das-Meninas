@@ -1,3 +1,5 @@
+import './index.css';
+
 import { 
     db, auth, googleProvider, 
     signInWithPopup, onAuthStateChanged, 
