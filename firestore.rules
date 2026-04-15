@@ -1,0 +1,59 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: /user_data/{userId}
+// Document ID: 'malu' or 'babi'
+// Fields:
+//   - balances: map (required)
+//   - goals: map (required)
+//   - totalIncome: number (required)
+//   - totalExpenses: number (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "carolmullerbianco@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUserData(data) {
+      return data.keys().hasAll(['balances', 'goals', 'totalIncome', 'totalExpenses']) &&
+             data.balances is map &&
+             data.goals is map &&
+             data.totalIncome is number &&
+             data.totalExpenses is number &&
+             (!('history' in data) || data.history is list);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /user_data/{userId} {
+      // Allow read/write if authenticated for now, as this is a private family app.
+      // In a production app, we would restrict by UID, but here 'malu' and 'babi' are shared keys.
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidUserData(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+  }
+}

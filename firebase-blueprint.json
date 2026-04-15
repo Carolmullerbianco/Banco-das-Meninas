@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "UserData": {
+      "title": "User Data",
+      "description": "Stores the balances, goals, and transaction totals for a specific user.",
+      "type": "object",
+      "properties": {
+        "balances": {
+          "type": "object",
+          "description": "The current balance for each piggy bank."
+        },
+        "goals": {
+          "type": "object",
+          "description": "The financial goals for each piggy bank."
+        },
+        "totalIncome": {
+          "type": "number",
+          "description": "The total income received by the user."
+        },
+        "totalExpenses": {
+          "type": "number",
+          "description": "The total expenses spent by the user."
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string", "enum": ["income", "expense", "reset", "adjustment"] },
+              "amount": { "type": "number" },
+              "bankId": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "description": { "type": "string" }
+            }
+          },
+          "description": "A log of all financial transactions for the user."
+        }
+      },
+      "required": ["balances", "goals", "totalIncome", "totalExpenses"]
+    }
+  },
+  "firestore": {
+    "/user_data/{userId}": {
+      "schema": "UserData",
+      "description": "Collection containing the financial data for Malu and Babi."
+    }
+  }
+}

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Banco das Meninas - Gestão Financeira</title>
+    <link rel="stylesheet" href="/src/index.css">
+  </head>
+  <body id="app-body" class="bg-premium-dark min-h-screen font-sans text-white transition-colors duration-500 overflow-x-hidden flex">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-20 lg:w-64 border-r border-white/10 flex-col hidden md:flex sticky top-0 h-screen bg-[#080a11] z-50 transition-all duration-500">
+      <div class="p-6 lg:p-8">
+        <h1 class="text-3xl font-black tracking-tighter italic lg:block hidden">Banco das Meninas</h1>
+        <div class="lg:hidden flex justify-center text-2xl">🏦</div>
+      </div>
+
+      <nav class="mt-4 flex-1">
+        <ul class="space-y-1">
+          <li>
+            <a href="#" id="nav-home" class="flex items-center justify-center lg:justify-start gap-4 px-6 lg:px-8 py-4 sidebar-item-active transition-all">
+              <span class="text-xl">🏠</span>
+              <span class="text-[10px] font-bold uppercase tracking-widest lg:block hidden">Início</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" id="nav-goals" class="flex items-center justify-center lg:justify-start gap-4 px-6 lg:px-8 py-4 opacity-20 hover:opacity-100 transition-all">
+              <span class="text-xl">🎯</span>
+              <span class="text-[10px] font-bold uppercase tracking-widest lg:block hidden">Metas</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" id="nav-history" class="flex items-center justify-center lg:justify-start gap-4 px-6 lg:px-8 py-4 opacity-20 hover:opacity-100 transition-all">
+              <span class="text-xl">📜</span>
+              <span class="text-[10px] font-bold uppercase tracking-widest lg:block hidden">Histórico</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="p-8 border-t border-white/5 space-y-4">
+        <!-- Sync Status -->
+        <div id="sync-status" class="flex items-center gap-3 px-2 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 hidden">
+          <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+          <span class="text-[8px] font-bold uppercase tracking-widest text-green-500/80">Sincronizado com a Nuvem</span>
+        </div>
+
+        <!-- Auth Section -->
+        <div id="auth-section" class="flex flex-col gap-4">
+          <button id="login-btn" type="button" class="w-full px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold uppercase tracking-widest transition-all">
+            Entrar
+          </button>
+          <div id="user-info" class="hidden flex items-center gap-3">
+            <img id="user-photo" src="" alt="" class="w-8 h-8 rounded-full border border-white/10">
+            <div class="flex flex-col">
+              <span id="user-name" class="text-[10px] font-bold opacity-80 truncate max-w-[120px]"></span>
+              <button id="logout-btn" type="button" class="text-[8px] opacity-30 hover:opacity-100 transition-opacity underline text-left">Sair</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="flex-1 min-h-screen relative">
+      <!-- Background Blobs -->
+      <div id="bg-blobs" class="fixed inset-0 -z-10 overflow-hidden pointer-events-none opacity-10 transition-opacity duration-1000">
+        <div class="absolute top-0 -left-4 w-96 h-96 bg-blue-600 rounded-full mix-blend-screen filter blur-[100px] animate-blob"></div>
+        <div class="absolute bottom-0 -right-4 w-96 h-96 bg-indigo-600 rounded-full mix-blend-screen filter blur-[100px] animate-blob animation-delay-2000"></div>
+      </div>
+
+      <div class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-10 pb-32 md:pb-10 relative z-10">
+        <header class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+          <div class="w-full flex justify-between items-center sm:block">
+            <h2 id="main-title" class="text-lg font-black tracking-tighter italic opacity-40 uppercase">Painel de Controle</h2>
+            <!-- Mobile Logout -->
+            <button id="mobile-logout-btn" type="button" class="md:hidden text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-all border border-white/10 px-3 py-1 rounded-lg">
+              Sair
+            </button>
+          </div>
+          
+          <!-- Abas Minimalistas -->
+          <div id="tabs-container" class="scale-100 origin-left sm:origin-right flex p-1.5 rounded-xl backdrop-blur-md border transition-all duration-500 bg-white/[0.05] border-white/[0.1]">
+            <button id="tab-malu" type="button" class="px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all active:scale-95">
+              Malu
+            </button>
+            <button id="tab-babi" type="button" class="px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all active:scale-95">
+              Babi
+            </button>
+          </div>
+        </header>
+
+        <main class="space-y-10">
+          <!-- Home View -->
+          <div id="home-view" class="space-y-10">
+            <!-- Transaction Controls -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <!-- Entrada -->
+              <div id="input-section" class="bg-white/[0.1] rounded-xl p-2 flex items-center gap-3 border border-white/[0.2] shadow-xl">
+                <div class="w-10 h-10 rounded-lg bg-premium-green/30 flex items-center justify-center text-premium-green text-xl border border-premium-green/20">
+                  <span class="font-bold">+</span>
+                </div>
+                <span class="text-xs font-bold uppercase tracking-widest text-white/80">Entrada</span>
+                <div class="flex-1 relative">
+                  <span class="absolute left-0 top-1/2 -translate-y-1/2 text-xs font-bold text-white/40">R$</span>
+                  <input type="number" id="amount-input" placeholder="0,00" step="0.01" class="w-full bg-transparent border-none outline-none pl-7 pr-2 py-1 text-lg font-bold placeholder-white/30 text-white">
+                </div>
+                <button id="add-btn" type="button" class="bg-premium-blue hover:bg-premium-blue/80 text-white text-[10px] font-bold uppercase tracking-widest px-6 py-3 rounded-lg transition-all shadow-lg shadow-premium-blue/30">
+                  Distribuir
+                </button>
+              </div>
+
+              <!-- Saída -->
+              <div id="output-section" class="bg-white/[0.1] rounded-xl p-2 flex items-center gap-3 border border-white/[0.2] shadow-xl">
+                <div class="w-10 h-10 rounded-lg bg-premium-red/30 flex items-center justify-center text-premium-red text-xl border border-premium-red/20">
+                  <span class="font-bold">-</span>
+                </div>
+                <div class="flex-1 flex items-center gap-3">
+                  <div class="relative flex-1">
+                    <span class="absolute left-0 top-1/2 -translate-y-1/2 text-xs font-bold text-white/40">R$</span>
+                    <input type="number" id="output-amount-input" placeholder="0,00" step="0.01" class="w-full bg-transparent border-none outline-none pl-7 pr-2 py-1 text-lg font-bold placeholder-white/30 text-white">
+                  </div>
+                  <select id="output-bank-select" class="bg-transparent border-none outline-none text-[10px] font-bold uppercase tracking-widest text-white/80 cursor-pointer text-white">
+                    <option value="" disabled selected class="bg-premium-dark text-white">Cofre</option>
+                    <option value="frida" class="bg-premium-dark text-white">🐔 Frida</option>
+                    <option value="bino" class="bg-premium-dark text-white">🐷 Bino</option>
+                    <option value="deco" class="bg-premium-dark text-white">🐷 Deco</option>
+                    <option value="edu" class="bg-premium-dark text-white">🐷 Edu</option>
+                    <option value="cora" class="bg-premium-dark text-white">🐷 Cora</option>
+                  </select>
+                </div>
+                <button id="output-btn" type="button" class="bg-white/[0.2] hover:bg-white/[0.3] text-white text-[10px] font-bold uppercase tracking-widest px-6 py-3 rounded-lg transition-all border border-white/10">
+                  Gastar
+                </button>
+              </div>
+            </div>
+
+            <!-- Piggy Banks Grid -->
+            <div id="piggy-banks-grid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              <!-- Cards via JS -->
+            </div>
+
+            <!-- Summary Section -->
+            <div id="summary-section" class="bg-white/[0.05] rounded-2xl p-8 border border-white/[0.1] flex flex-col md:flex-row justify-between items-center gap-6">
+              <div class="flex flex-col items-center md:items-start">
+                <span class="text-xs font-bold uppercase tracking-widest opacity-40 mb-1">Total Mesadas</span>
+                <span id="total-income" class="text-2xl font-bold text-premium-green">R$ 0,00</span>
+              </div>
+              <div class="h-12 w-px bg-white/[0.1] hidden md:block"></div>
+              <div class="flex flex-col items-center md:items-start">
+                <span class="text-xs font-bold uppercase tracking-widest opacity-40 mb-1">Total Gastos</span>
+                <span id="total-expenses" class="text-2xl font-bold text-premium-red">R$ 0,00</span>
+              </div>
+              <div class="h-12 w-px bg-white/[0.1] hidden md:block"></div>
+              <div class="flex flex-col items-center md:items-end">
+                <span class="text-xs font-bold uppercase tracking-widest opacity-40 mb-1">Saldo Consolidado</span>
+                <span id="total-balance" class="text-4xl font-bold tracking-tight text-white">R$ 0,00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- History View -->
+          <div id="history-view" class="hidden space-y-6 sm:space-y-8">
+            <div class="bg-premium-card/30 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 border border-white/5">
+              <div class="flex justify-between items-center mb-8">
+                <h3 class="text-xl font-black tracking-tighter italic uppercase opacity-60">Histórico de Atividades</h3>
+                <span class="text-[8px] font-bold uppercase tracking-widest opacity-30">Últimas 50 transações</span>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="border-b border-white/5 text-[10px] font-bold uppercase tracking-widest opacity-40">
+                      <th class="pb-4 pr-4">Data</th>
+                      <th class="pb-4 pr-4">Tipo</th>
+                      <th class="pb-4 pr-4">Cofrinho</th>
+                      <th class="pb-4 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody id="history-list" class="text-xs">
+                    <!-- History rows via JS -->
+                  </tbody>
+                </table>
+              </div>
+              <div id="history-empty" class="hidden py-20 text-center opacity-20 italic text-sm">
+                Nenhuma atividade registrada ainda.
+              </div>
+            </div>
+          </div>
+
+          <!-- Goals View -->
+          <div id="goals-view" class="hidden space-y-6 sm:space-y-8">
+            <!-- Section: Definir Metas -->
+            <div class="bg-premium-card/30 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 border border-white/5">
+              <h3 class="text-xl font-black tracking-tighter italic mb-8 uppercase opacity-60">Definir Metas</h3>
+              <div id="goals-list" class="space-y-6">
+                <!-- Goals inputs via JS -->
+              </div>
+              <div class="mt-10 flex justify-end">
+                <button id="save-goals-btn" type="button" class="bg-premium-green hover:bg-premium-green/80 text-white text-[10px] font-black uppercase tracking-[0.2em] px-12 py-4 rounded-full transition-all shadow-lg shadow-premium-green/20">
+                  Salvar Metas
+                </button>
+              </div>
+            </div>
+
+            <!-- Section: Ajustar Saldos Atuais -->
+            <div class="bg-premium-card/30 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 border border-white/5">
+              <h3 class="text-xl font-black tracking-tighter italic mb-8 uppercase opacity-60">Ajustar Saldos Atuais</h3>
+              <p class="text-xs opacity-40 mb-8 max-w-md">Use esta seção para atualizar o valor que já existe em cada cofrinho físico hoje.</p>
+              <div id="balances-list" class="space-y-6">
+                <!-- Balance inputs via JS -->
+              </div>
+              <div class="mt-10 flex justify-end items-center gap-6">
+                <div class="flex flex-col gap-2">
+                  <button id="backup-btn" type="button" class="text-[8px] font-bold uppercase tracking-[0.2em] opacity-20 hover:opacity-100 hover:text-blue-500 transition-all">
+                    Baixar Cópia de Segurança (Backup)
+                  </button>
+                  <button id="reset-data-btn" type="button" class="text-[8px] font-bold uppercase tracking-[0.2em] opacity-20 hover:opacity-100 hover:text-red-500 transition-all">
+                    Zerar Todos os Dados
+                  </button>
+                </div>
+                <button id="save-balances-btn" type="button" class="bg-premium-blue hover:bg-premium-blue/80 text-white text-[10px] font-black uppercase tracking-[0.2em] px-12 py-4 rounded-full transition-all shadow-lg shadow-premium-blue/20">
+                  Atualizar Saldos
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <footer id="app-footer" class="mt-20 text-center text-[10px] uppercase tracking-[0.4em] font-black opacity-20">
+          &copy; 2026 Banco das Meninas
+        </footer>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation (Mobile Only) -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#080a11]/80 backdrop-blur-xl border-t border-white/10 z-[100] px-6 py-3 flex justify-around items-center">
+      <a href="#" id="mobile-nav-home" class="flex flex-col items-center gap-1 text-premium-blue">
+        <span class="text-xl">🏠</span>
+        <span class="text-[8px] font-bold uppercase tracking-widest">Início</span>
+      </a>
+      <a href="#" id="mobile-nav-goals" class="flex flex-col items-center gap-1 opacity-40">
+        <span class="text-xl">🎯</span>
+        <span class="text-[8px] font-bold uppercase tracking-widest">Metas</span>
+      </a>
+      <a href="#" id="mobile-nav-history" class="flex flex-col items-center gap-1 opacity-40">
+        <span class="text-xl">📜</span>
+        <span class="text-[8px] font-bold uppercase tracking-widest">Histórico</span>
+      </a>
+    </nav>
+
+    <!-- Custom Modal -->
+    <div id="custom-modal" class="fixed inset-0 z-[200] hidden flex items-center justify-center p-6">
+      <div class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+      <div class="bg-[#080a11] border border-white/10 rounded-[2rem] p-8 max-w-sm w-full relative z-10 shadow-2xl">
+        <h3 id="modal-title" class="text-xl font-bold mb-4">Confirmar Ação</h3>
+        <p id="modal-message" class="text-sm opacity-60 mb-8 leading-relaxed"></p>
+        <div class="flex gap-4">
+          <button id="modal-cancel" type="button" class="flex-1 px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold uppercase tracking-widest transition-all">Cancelar</button>
+          <button id="modal-confirm" type="button" class="flex-1 px-6 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-xs font-bold uppercase tracking-widest transition-all">Confirmar</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/app.ts"></script>
+  </body>
+</html>
+
