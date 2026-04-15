@@ -1,18 +1,11 @@
 import './index.css';
 
-import { 
-    db, auth, googleProvider, 
-    signInWithPopup, onAuthStateChanged, 
-    doc, onSnapshot, setDoc, 
-    handleFirestoreError, OperationType 
-} from './firebase';
-
 import fridaImg from './assets/frida.png';
 import piggyImg from './assets/piggy.png';
 
 /**
- * Banco das Meninas - Lógica da Aplicação com Firebase
- * Versão: 5.2 (Imagens Fixas e Botão Sair Restaurado)
+ * Banco das Meninas - Versão Simplificada (Sem Login)
+ * Versão: 6.0 - Dados salvos no navegador (localStorage)
  */
 
 // Configuração dos cofrinhos e seus percentuais
@@ -98,8 +91,8 @@ const THEMES = {
     }
 };
 
-// Cores específicas para a Babi para manter a harmonia lilás/roxo
-const BABI_BANK_COLORS = {
+// Cores específicas para a Babi
+const BABI_BANK_COLORS: Record<string, string> = {
     frida: 'bg-purple-600',
     bino: 'bg-pink-500',
     deco: 'bg-purple-400',
@@ -107,204 +100,86 @@ const BABI_BANK_COLORS = {
     cora: 'bg-fuchsia-400'
 };
 
+// Interface para os dados do usuário
+interface UserData {
+    balances: Record<string, number>;
+    goals: Record<string, number>;
+    totalIncome: number;
+    totalExpenses: number;
+    history: HistoryEntry[];
+}
+
+interface HistoryEntry {
+    id: string;
+    type: 'income' | 'expense' | 'reset' | 'adjustment';
+    amount: number;
+    bankId: string;
+    timestamp: string;
+    description: string;
+}
+
 // Estado da aplicação
-let state = {
+const state = {
     activeUser: 'malu' as 'malu' | 'babi',
-    activeView: 'home', // 'home', 'goals' ou 'history'
-    currentUser: null as any,
+    activeView: 'home',
     users: {
         malu: {
             balances: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
             goals: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
             totalIncome: 0,
             totalExpenses: 0,
-            history: [] as any[]
+            history: [] as HistoryEntry[]
         },
         babi: {
             balances: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
             goals: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
             totalIncome: 0,
             totalExpenses: 0,
-            history: [] as any[]
+            history: [] as HistoryEntry[]
         }
     }
 };
 
-// Listeners do Firestore
-let unsubscribers = [];
-
 /**
  * Inicializa a aplicação
  */
-async function init() {
-    // Tentar carregar do localStorage primeiro para rapidez e offline
-    const localMalu = localStorage.getItem('banco_meninas_malu');
-    const localBabi = localStorage.getItem('banco_meninas_babi');
-    if (localMalu) state.users.malu = JSON.parse(localMalu);
-    if (localBabi) state.users.babi = JSON.parse(localBabi);
-
-    setupAuth();
+function init() {
+    loadFromLocalStorage();
     setupEventListeners();
     applyTheme();
     renderAll();
 }
 
 /**
- * Configura a autenticação
+ * Carrega dados do localStorage
  */
-function setupAuth() {
-    onAuthStateChanged(auth, (user) => {
-        state.currentUser = user;
-        updateAuthUI();
-        
-        if (user) {
-            startSync();
-        } else {
-            stopSync();
-            resetState();
-            renderAll();
-        }
-    });
-}
-
-/**
- * Atualiza a UI de autenticação
- */
-function updateAuthUI() {
-    const loginBtn = document.getElementById('login-btn');
-    const userInfo = document.getElementById('user-info');
-    const userPhoto = document.getElementById('user-photo');
-    const userName = document.getElementById('user-name');
-    const syncStatus = document.getElementById('sync-status');
-
-    if (state.currentUser) {
-        loginBtn.classList.add('hidden');
-        userInfo.classList.remove('hidden');
-        if (syncStatus) syncStatus.classList.remove('hidden');
-        (userPhoto as HTMLImageElement).src = state.currentUser.photoURL || '';
-        userName.textContent = state.currentUser.displayName || 'Usuário';
-    } else {
-        loginBtn.classList.remove('hidden');
-        userInfo.classList.add('hidden');
-        if (syncStatus) syncStatus.classList.add('hidden');
-    }
-}
-
-/**
- * Inicia a sincronização em tempo real com o Firestore
- */
-function startSync() {
-    stopSync(); // Limpar anteriores se houver
-
-    const users = ['malu', 'babi'];
-    users.forEach(userId => {
-        const unsub = onSnapshot(doc(db, 'user_data', userId), (snapshot) => {
-            if (snapshot.exists()) {
-                const remoteData = snapshot.data();
-                // Só atualiza se houver dados válidos e não for um estado vazio acidental
-                if (remoteData && remoteData.balances) {
-                    state.users[userId] = remoteData;
-                    renderAll();
-                    updateLastSyncTime();
-                }
-            } else {
-                // Criar documento inicial se não existir e tivermos dados locais
-                if (state.users[userId] && state.users[userId].balances) {
-                    saveUserData(userId, state.users[userId], true);
-                }
-            }
-        }, (error) => {
-            handleFirestoreError(error, OperationType.GET, `user_data/${userId}`);
-        });
-        unsubscribers.push(unsub);
-    });
-}
-
-/**
- * Atualiza o horário da última sincronização na UI
- */
-function updateLastSyncTime() {
-    const syncStatus = document.getElementById('sync-status');
-    if (syncStatus && state.currentUser) {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        syncStatus.innerHTML = `
-            <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-            <span class="text-[8px] font-bold uppercase tracking-widest text-green-500/80">Sincronizado: ${timeStr}</span>
-        `;
-    }
-}
-
-/**
- * Salva os dados do usuário no Firestore com proteção contra dados vazios
- */
-async function saveUserData(userId, data, isInitial = false) {
-    if (!state.currentUser) return;
+function loadFromLocalStorage() {
+    const localMalu = localStorage.getItem('banco_meninas_malu');
+    const localBabi = localStorage.getItem('banco_meninas_babi');
     
-    // Proteção: Não salvar se os dados parecerem corrompidos ou vazios (exceto se for um reset explícito)
-    if (!isInitial && (!data || !data.balances || Object.keys(data.balances).length === 0)) {
-        console.warn('Tentativa de salvar dados inválidos bloqueada para evitar perda de dados.');
-        return;
-    }
-
-    const syncStatus = document.getElementById('sync-status');
-    if (syncStatus) {
-        syncStatus.innerHTML = `
-            <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
-            <span class="text-[8px] font-bold uppercase tracking-widest text-amber-500/80">Salvando...</span>
-        `;
-        syncStatus.className = "flex items-center gap-3 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 transition-all";
-    }
-
-    try {
-        // Salvar no localStorage como backup imediato
-        localStorage.setItem(`banco_meninas_${userId}`, JSON.stringify(data));
-        
-        await setDoc(doc(db, 'user_data', userId), data);
-        updateLastSyncTime();
-        if (syncStatus) {
-            syncStatus.className = "flex items-center gap-3 px-2 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 transition-all";
+    if (localMalu) {
+        try {
+            state.users.malu = JSON.parse(localMalu);
+        } catch (e) {
+            console.error('Erro ao carregar dados da Malu:', e);
         }
-    } catch (error) {
-        if (syncStatus) {
-            syncStatus.innerHTML = `
-                <div class="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                <span class="text-[8px] font-bold uppercase tracking-widest text-red-500/80">Erro ao Salvar</span>
-            `;
-            syncStatus.className = "flex items-center gap-3 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 transition-all";
+    }
+    
+    if (localBabi) {
+        try {
+            state.users.babi = JSON.parse(localBabi);
+        } catch (e) {
+            console.error('Erro ao carregar dados da Babi:', e);
         }
-        handleFirestoreError(error, OperationType.WRITE, `user_data/${userId}`);
     }
 }
 
 /**
- * Para a sincronização
+ * Salva dados no localStorage
  */
-function stopSync() {
-    unsubscribers.forEach(unsub => unsub());
-    unsubscribers = [];
-}
-
-/**
- * Reseta o estado local
- */
-function resetState() {
-    state.users = {
-        malu: { 
-            balances: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 }, 
-            goals: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
-            totalIncome: 0, 
-            totalExpenses: 0,
-            history: []
-        },
-        babi: { 
-            balances: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 }, 
-            goals: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
-            totalIncome: 0, 
-            totalExpenses: 0,
-            history: []
-        }
-    };
+function saveToLocalStorage() {
+    localStorage.setItem('banco_meninas_malu', JSON.stringify(state.users.malu));
+    localStorage.setItem('banco_meninas_babi', JSON.stringify(state.users.babi));
 }
 
 /**
@@ -330,15 +205,17 @@ function applyTheme() {
     const tabBabi = document.getElementById('tab-babi');
     const sidebar = document.getElementById('sidebar');
 
-    body.className = `${theme.body} min-h-screen font-sans ${theme.textColor} transition-all duration-1000 overflow-x-hidden flex antialiased`;
-    title.className = `text-lg font-black tracking-tighter italic uppercase transition-colors duration-500 ${theme.title} opacity-40`;
-    footer.className = `mt-20 text-center text-[10px] uppercase tracking-[0.4em] font-bold transition-colors duration-500 ${theme.footer}`;
+    if (body) body.className = `${theme.body} min-h-screen font-sans ${theme.textColor} transition-all duration-1000 overflow-x-hidden flex antialiased`;
+    if (title) title.className = `text-lg font-black tracking-tighter italic uppercase transition-colors duration-500 ${theme.title} opacity-40`;
+    if (footer) footer.className = `mt-20 text-center text-[10px] uppercase tracking-[0.4em] font-bold transition-colors duration-500 ${theme.footer}`;
 
-    bgBlobs.className = `fixed inset-0 -z-10 overflow-hidden pointer-events-none ${theme.blobs} transition-opacity duration-1000`;
-    const blobs = bgBlobs.querySelectorAll('div');
-    if (blobs.length >= 2) {
-        blobs[0].className = `absolute top-0 -left-4 w-96 h-96 ${theme.blobColors[0]} rounded-full mix-blend-multiply filter blur-[100px] animate-blob transition-colors duration-1000`;
-        blobs[1].className = `absolute bottom-0 -right-4 w-96 h-96 ${theme.blobColors[1]} rounded-full mix-blend-multiply filter blur-[100px] animate-blob animation-delay-2000 transition-colors duration-1000`;
+    if (bgBlobs) {
+        bgBlobs.className = `fixed inset-0 -z-10 overflow-hidden pointer-events-none ${theme.blobs} transition-opacity duration-1000`;
+        const blobs = bgBlobs.querySelectorAll('div');
+        if (blobs.length >= 2) {
+            blobs[0].className = `absolute top-0 -left-4 w-96 h-96 ${theme.blobColors[0]} rounded-full mix-blend-multiply filter blur-[100px] animate-blob transition-colors duration-1000`;
+            blobs[1].className = `absolute bottom-0 -right-4 w-96 h-96 ${theme.blobColors[1]} rounded-full mix-blend-multiply filter blur-[100px] animate-blob animation-delay-2000 transition-colors duration-1000`;
+        }
     }
     
     if (sidebar) {
@@ -346,25 +223,27 @@ function applyTheme() {
     }
 
     const tabsContainer = document.getElementById('tabs-container');
-    tabsContainer.className = `flex p-1.5 rounded-xl backdrop-blur-md border transition-all duration-500 ${theme.tabsContainer}`;
+    if (tabsContainer) tabsContainer.className = `flex p-1.5 rounded-xl backdrop-blur-md border transition-all duration-500 ${theme.tabsContainer}`;
 
     const tabBase = "px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all active:scale-95";
-    if (state.activeUser === 'malu') {
-        tabMalu.className = `${tabBase} ${theme.tabActive}`;
-        tabBabi.className = `${tabBase} ${theme.tabInactive}`;
-    } else {
-        tabBabi.className = `${tabBase} ${theme.tabActive}`;
-        tabMalu.className = `${tabBase} ${theme.tabInactive}`;
+    if (tabMalu && tabBabi) {
+        if (state.activeUser === 'malu') {
+            tabMalu.className = `${tabBase} ${theme.tabActive}`;
+            tabBabi.className = `${tabBase} ${theme.tabInactive}`;
+        } else {
+            tabBabi.className = `${tabBase} ${theme.tabActive}`;
+            tabMalu.className = `${tabBase} ${theme.tabInactive}`;
+        }
     }
 
-    // Explicitly style inputs and selects for visibility
+    // Style inputs
     const inputs = ['amount-input', 'output-amount-input'];
     inputs.forEach(id => {
-        const el = document.getElementById(id);
+        const el = document.getElementById(id) as HTMLInputElement;
         if (el) el.className = `w-full bg-transparent border-none outline-none pl-6 pr-4 py-1.5 text-base font-semibold placeholder-current opacity-60 ${theme.textColor} tracking-tight`;
     });
 
-    const select = document.getElementById('output-bank-select');
+    const select = document.getElementById('output-bank-select') as HTMLSelectElement;
     if (select) select.className = `bg-transparent border-none outline-none text-[9px] font-bold uppercase tracking-widest opacity-40 hover:opacity-80 cursor-pointer ${theme.textColor} transition-opacity`;
 
     // Style input and output sections
@@ -374,11 +253,12 @@ function applyTheme() {
         if (el) {
             el.className = `rounded-xl p-2 flex items-center gap-3 border shadow-xl transition-all duration-500 ${state.activeUser === 'babi' ? 'bg-[#1a162e]/[0.05] border-[#1a162e]/10' : 'bg-white/[0.1] border-white/[0.2]'}`;
             
-            // Fix labels and R$ inside sections
             const spans = el.querySelectorAll('span');
             spans.forEach(span => {
                 if (span.textContent === 'R$') {
                     span.className = `absolute left-0 top-1/2 -translate-y-1/2 text-xs font-bold transition-colors duration-500 ${state.activeUser === 'babi' ? 'text-[#1a162e]/30' : 'text-white/40'}`;
+                } else if (span.textContent === '+' || span.textContent === '-') {
+                    // Keep button styling
                 } else {
                     span.className = `text-xs font-bold uppercase tracking-widest transition-colors duration-500 ${state.activeUser === 'babi' ? 'text-[#1a162e]/60' : 'text-white/80'}`;
                 }
@@ -386,7 +266,7 @@ function applyTheme() {
         }
     });
 
-    // Style the "Gastar" button specifically - Dark Gray for Babi
+    // Style the "Gastar" button
     const outputBtn = document.getElementById('output-btn');
     if (outputBtn) {
         if (state.activeUser === 'babi') {
@@ -396,36 +276,28 @@ function applyTheme() {
         }
     }
 
-    // Style the "Receber" button specifically
+    // Style the "Receber" button
     const addBtn = document.getElementById('add-btn');
     if (addBtn) {
         addBtn.className = `text-[10px] font-bold uppercase tracking-widest px-6 py-3 rounded-lg transition-all shadow-lg ${state.activeUser === 'babi' ? 'bg-[#a855f7] text-white shadow-purple-500/20' : 'bg-premium-blue hover:bg-premium-blue/80 text-white shadow-premium-blue/20'}`;
     }
 
     // Update sidebar items text color
-    const navItems = ['nav-home', 'nav-goals'];
+    const navItems = ['nav-home', 'nav-goals', 'nav-history'];
     navItems.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            const span = el.querySelector('span');
+            const span = el.querySelector('span:last-child');
             if (span) {
-                span.className = `font-bold text-xs uppercase tracking-widest transition-colors duration-500 ${state.activeUser === 'babi' ? 'text-[#1a162e]' : 'text-white'}`;
+                span.className = `text-[10px] font-bold uppercase tracking-widest lg:block hidden transition-colors duration-500 ${state.activeUser === 'babi' ? 'text-[#1a162e]' : 'text-white'}`;
             }
         }
     });
 
-    // Update mobile nav items initial state
+    // Update view
     switchView(state.activeView);
 
-    // Update Goals View Sections
-    const goalsView = document.getElementById('goals-view');
-    if (goalsView) {
-        const sections = goalsView.querySelectorAll('.bg-premium-card\\/30');
-        sections.forEach(section => {
-            (section as HTMLElement).className = `bg-premium-card/30 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 border transition-all duration-500 ${theme.sectionBg}`;
-        });
-    }
-
+    // Update buttons
     const saveGoalsBtn = document.getElementById('save-goals-btn');
     const saveBalancesBtn = document.getElementById('save-balances-btn');
     const btnBase = "text-white text-[10px] font-black uppercase tracking-[0.2em] px-12 py-4 rounded-full transition-all shadow-lg";
@@ -449,35 +321,7 @@ function renderPiggyBanks() {
     const userData = state.users[state.activeUser];
     const theme = THEMES[state.activeUser];
 
-    if (!state.currentUser) {
-        grid.innerHTML = `
-            <div class="col-span-full flex flex-col items-center justify-center py-20 space-y-6 text-center">
-                <div class="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center text-4xl border border-white/10">
-                    🔒
-                </div>
-                <div class="space-y-2">
-                    <h3 class="text-xl font-bold ${theme.textColor}">Acesso Restrito</h3>
-                    <p class="text-xs ${theme.subColor} max-w-[240px] mx-auto leading-relaxed">
-                        Faça login para ver e gerenciar seus cofrinhos com segurança na nuvem.
-                    </p>
-                </div>
-                <button type="button" onclick="document.getElementById('login-btn').click()" class="px-8 py-3 rounded-xl bg-premium-blue text-white text-xs font-bold uppercase tracking-widest shadow-lg shadow-premium-blue/20 active:scale-95 transition-all">
-                    Entrar com Google
-                </button>
-            </div>
-        `;
-        return;
-    }
-
-    if (!userData || !userData.balances) {
-        grid.innerHTML = `
-            <div class="col-span-full flex flex-col items-center justify-center py-20 space-y-4 opacity-40">
-                <div class="w-12 h-12 border-4 border-white/10 border-t-white/40 rounded-full animate-spin"></div>
-                <p class="text-xs font-bold uppercase tracking-[0.3em] animate-pulse">Sincronizando Cofrinhos...</p>
-            </div>
-        `;
-        return;
-    }
+    if (!userData || !userData.balances) return;
 
     const activeBalances = userData.balances;
     const activeGoals = userData.goals || { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 };
@@ -494,14 +338,14 @@ function renderPiggyBanks() {
         const isGoalReached = goal > 0 && balance >= goal;
 
         let progress = 0;
-        let remaining = goal - balance;
+        const remaining = goal - balance;
         if (goal > 0) {
             progress = Math.min((balance / goal) * 100, 100);
         }
 
         const themeIconColor = state.activeUser === 'babi' ? 'text-purple-600' : 'text-white';
         const iconHtml = bank.image 
-            ? `<img src="${bank.image}" alt="${bank.name}" class="w-full h-full object-cover" referrerPolicy="no-referrer">`
+            ? `<img src="${bank.image}" alt="${bank.name}" class="w-full h-full object-cover">`
             : `<div class="w-full h-full flex items-center justify-center text-xl ${themeIconColor}">${bank.icon || '🐷'}</div>`;
 
         card.innerHTML = `
@@ -565,20 +409,6 @@ function renderGoals() {
     const userData = state.users[state.activeUser];
     const theme = THEMES[state.activeUser];
 
-    if (!state.currentUser) {
-        const loginMsg = `
-            <div class="col-span-full flex flex-col items-center justify-center py-10 space-y-4 text-center opacity-60">
-                <div class="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-3xl border border-white/10">
-                    🔒
-                </div>
-                <p class="text-xs font-bold uppercase tracking-widest ${theme.textColor}">Login necessário para ver metas</p>
-            </div>
-        `;
-        goalsList.innerHTML = loginMsg;
-        balancesList.innerHTML = loginMsg;
-        return;
-    }
-
     const goals = userData.goals || { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 };
     const balances = userData.balances || { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 };
 
@@ -587,7 +417,7 @@ function renderGoals() {
         
         const themeIconColor = state.activeUser === 'babi' ? 'text-purple-600' : 'text-white';
         const imageHtml = bank.image 
-            ? `<img src="${bank.image}" alt="${bank.name}" class="w-full h-full object-cover" referrerPolicy="no-referrer">`
+            ? `<img src="${bank.image}" alt="${bank.name}" class="w-full h-full object-cover">`
             : `<div class="w-full h-full flex items-center justify-center text-xl ${themeIconColor}">${bank.icon || '🐷'}</div>`;
 
         // Render Goals
@@ -647,13 +477,6 @@ function renderSummary() {
     const balanceEl = document.getElementById('total-balance');
     const summarySection = document.getElementById('summary-section');
     
-    if (!state.currentUser) {
-        if (incomeEl) incomeEl.textContent = `R$ 0,00`;
-        if (expensesEl) expensesEl.textContent = `R$ 0,00`;
-        if (balanceEl) balanceEl.textContent = `R$ 0,00`;
-        return;
-    }
-    
     const totalBalance = Object.values(user.balances).reduce((a: number, b: number) => a + b, 0);
     
     if (incomeEl) incomeEl.textContent = `R$ ${formatCurrency(user.totalIncome || 0)}`;
@@ -666,10 +489,11 @@ function renderSummary() {
     if (summarySection) {
         summarySection.className = `rounded-2xl p-8 border transition-all duration-500 flex flex-col md:flex-row justify-between items-center gap-6 ${theme.cardBg} ${state.activeUser === 'babi' ? 'border-[#1a162e]/10' : 'border-white/[0.1]'}`;
         
-        // Fix labels in summary
         const labels = summarySection.querySelectorAll('span:not([id])');
         labels.forEach(label => {
-            label.className = `text-xs font-bold uppercase tracking-widest mb-1 transition-colors duration-500 ${state.activeUser === 'babi' ? 'text-[#1a162e]/40' : 'text-white/40'}`;
+            if (!label.id) {
+                label.className = `text-xs font-bold uppercase tracking-widest mb-1 transition-colors duration-500 ${state.activeUser === 'babi' ? 'text-[#1a162e]/40' : 'text-white/40'}`;
+            }
         });
     }
 }
@@ -678,12 +502,10 @@ function renderSummary() {
  * Configura os ouvintes de eventos
  */
 function setupEventListeners() {
-    const loginBtn = document.getElementById('login-btn');
-    const logoutBtn = document.getElementById('logout-btn');
     const addBtn = document.getElementById('add-btn');
     const outputBtn = document.getElementById('output-btn');
-    const amountInput = document.getElementById('amount-input');
-    const outputAmountInput = document.getElementById('output-amount-input');
+    const amountInput = document.getElementById('amount-input') as HTMLInputElement;
+    const outputAmountInput = document.getElementById('output-amount-input') as HTMLInputElement;
     const tabMalu = document.getElementById('tab-malu');
     const tabBabi = document.getElementById('tab-babi');
     
@@ -696,26 +518,8 @@ function setupEventListeners() {
     const saveGoalsBtn = document.getElementById('save-goals-btn');
     const saveBalancesBtn = document.getElementById('save-balances-btn');
     const resetDataBtn = document.getElementById('reset-data-btn');
-
-    if (loginBtn) {
-        loginBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            try {
-                console.log("Iniciando login com Google...");
-                await signInWithPopup(auth, googleProvider);
-                console.log("Login realizado com sucesso!");
-            } catch (error: any) {
-                console.error("Erro no login:", error);
-                if (error.code === 'auth/popup-blocked') {
-                    alert("O popup de login foi bloqueado pelo seu navegador. Por favor, permita popups para este site.");
-                } else if (error.code === 'auth/cancelled-popup-request') {
-                    // Ignorar cancelamento
-                } else {
-                    alert("Erro ao entrar: " + error.message);
-                }
-            }
-        });
-    }
+    const backupBtn = document.getElementById('backup-btn');
+    const sidebarBackupBtn = document.getElementById('sidebar-backup-btn');
 
     if (addBtn) {
         addBtn.addEventListener('click', (e) => {
@@ -730,8 +534,8 @@ function setupEventListeners() {
         });
     }
     
-    amountInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleAddEntry(); });
-    outputAmountInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleOutputEntry(); });
+    if (amountInput) amountInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleAddEntry(); });
+    if (outputAmountInput) outputAmountInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleOutputEntry(); });
 
     if (tabMalu) {
         tabMalu.addEventListener('click', (e) => {
@@ -752,6 +556,7 @@ function setupEventListeners() {
     if (mobileNavHome) mobileNavHome.addEventListener('click', (e) => { e.preventDefault(); switchView('home'); });
     if (mobileNavGoals) mobileNavGoals.addEventListener('click', (e) => { e.preventDefault(); switchView('goals'); });
     if (mobileNavHistory) mobileNavHistory.addEventListener('click', (e) => { e.preventDefault(); switchView('history'); });
+    
     if (saveGoalsBtn) {
         saveGoalsBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -772,34 +577,23 @@ function setupEventListeners() {
         });
     }
 
-    // Botão de Backup
-    const backupBtn = document.getElementById('backup-btn');
     if (backupBtn) {
         backupBtn.addEventListener('click', (e) => {
             e.preventDefault();
             handleBackupData();
         });
     }
-
-    // Logout
-    const mobileLogoutBtn = document.getElementById('mobile-logout-btn');
     
-    const handleLogout = async () => {
-        try {
-            await auth.signOut();
-            localStorage.clear();
-            window.location.reload();
-        } catch (error) {
-            console.error('Erro ao sair:', error);
-        }
-    };
-
-    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-    if (mobileLogoutBtn) mobileLogoutBtn.addEventListener('click', handleLogout);
+    if (sidebarBackupBtn) {
+        sidebarBackupBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleBackupData();
+        });
+    }
 }
 
 /**
- * Troca de visualização (Home vs Metas)
+ * Troca de visualização (Home vs Metas vs Histórico)
  */
 function switchView(view: string) {
     state.activeView = view;
@@ -811,6 +605,7 @@ function switchView(view: string) {
     const navHistory = document.getElementById('nav-history');
     const mobileNavHome = document.getElementById('mobile-nav-home');
     const mobileNavGoals = document.getElementById('mobile-nav-goals');
+    const mobileNavHistory = document.getElementById('mobile-nav-history');
 
     const activeColor = state.activeUser === 'babi' ? 'text-purple-600' : 'text-premium-blue';
     const inactiveColor = state.activeUser === 'babi' ? 'text-[#1a162e]' : 'text-white';
@@ -825,10 +620,15 @@ function switchView(view: string) {
         if (nav) {
             nav.classList.remove('sidebar-item-active');
             nav.classList.add('opacity-30');
-            nav.style.borderColor = '';
-            nav.style.color = '';
-            nav.style.backgroundColor = '';
+            (nav as HTMLElement).style.borderColor = '';
+            (nav as HTMLElement).style.color = '';
+            (nav as HTMLElement).style.backgroundColor = '';
         }
+    });
+
+    // Reset mobile navs
+    [mobileNavHome, mobileNavGoals, mobileNavHistory].forEach(nav => {
+        if (nav) nav.className = `flex flex-col items-center gap-1 ${inactiveColor} opacity-40`;
     });
 
     if (view === 'home') {
@@ -837,25 +637,23 @@ function switchView(view: string) {
             navHome.classList.add('sidebar-item-active');
             navHome.classList.remove('opacity-30');
             if (state.activeUser === 'babi') {
-                navHome.style.borderColor = '#a855f7';
-                navHome.style.color = '#a855f7';
-                navHome.style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
+                (navHome as HTMLElement).style.borderColor = '#a855f7';
+                (navHome as HTMLElement).style.color = '#a855f7';
+                (navHome as HTMLElement).style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
             }
         }
         if (mobileNavHome) mobileNavHome.className = `flex flex-col items-center gap-1 ${activeColor}`;
-        if (mobileNavGoals) mobileNavGoals.className = `flex flex-col items-center gap-1 ${inactiveColor} opacity-40`;
     } else if (view === 'goals') {
         if (goalsView) goalsView.classList.remove('hidden');
         if (navGoals) {
             navGoals.classList.add('sidebar-item-active');
             navGoals.classList.remove('opacity-30');
             if (state.activeUser === 'babi') {
-                navGoals.style.borderColor = '#a855f7';
-                navGoals.style.color = '#a855f7';
-                navGoals.style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
+                (navGoals as HTMLElement).style.borderColor = '#a855f7';
+                (navGoals as HTMLElement).style.color = '#a855f7';
+                (navGoals as HTMLElement).style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
             }
         }
-        if (mobileNavHome) mobileNavHome.className = `flex flex-col items-center gap-1 ${inactiveColor} opacity-40`;
         if (mobileNavGoals) mobileNavGoals.className = `flex flex-col items-center gap-1 ${activeColor}`;
         renderGoals();
     } else if (view === 'history') {
@@ -864,11 +662,12 @@ function switchView(view: string) {
             navHistory.classList.add('sidebar-item-active');
             navHistory.classList.remove('opacity-30');
             if (state.activeUser === 'babi') {
-                navHistory.style.borderColor = '#a855f7';
-                navHistory.style.color = '#a855f7';
-                navHistory.style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
+                (navHistory as HTMLElement).style.borderColor = '#a855f7';
+                (navHistory as HTMLElement).style.color = '#a855f7';
+                (navHistory as HTMLElement).style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
             }
         }
+        if (mobileNavHistory) mobileNavHistory.className = `flex flex-col items-center gap-1 ${activeColor}`;
         renderHistory();
     }
 }
@@ -876,11 +675,11 @@ function switchView(view: string) {
 /**
  * Adiciona uma entrada ao histórico
  */
-function addHistoryEntry(type, amount, bankId, description) {
+function addHistoryEntry(type: HistoryEntry['type'], amount: number, bankId: string, description: string) {
     const user = state.users[state.activeUser];
     if (!user.history) user.history = [];
     
-    const entry = {
+    const entry: HistoryEntry = {
         id: Date.now().toString(),
         type,
         amount,
@@ -891,7 +690,7 @@ function addHistoryEntry(type, amount, bankId, description) {
     
     user.history.unshift(entry);
     
-    // Limitar a 50 entradas para não sobrecarregar o Firestore
+    // Limitar a 50 entradas
     if (user.history.length > 50) {
         user.history = user.history.slice(0, 50);
     }
@@ -944,7 +743,6 @@ function renderHistory() {
                 break;
         }
 
-        // Se for income, o bankName é "Distribuído"
         const displayBank = entry.type === 'income' ? 'Distribuído' : bankName;
 
         return `
@@ -968,16 +766,11 @@ function renderHistory() {
 }
 
 /**
- * Salva as metas no Firestore
+ * Salva as metas
  */
-async function handleSaveGoals() {
-    if (!state.currentUser) {
-        alert('Por favor, faça login para salvar suas metas.');
-        return;
-    }
-
+function handleSaveGoals() {
     const goalInputs = document.querySelectorAll('.goal-input');
-    const newGoals: any = {};
+    const newGoals: Record<string, number> = {};
     
     goalInputs.forEach(input => {
         const bankId = input.getAttribute('data-bank-id') || '';
@@ -985,27 +778,21 @@ async function handleSaveGoals() {
         newGoals[bankId] = val;
     });
 
-    const user = { ...state.users[state.activeUser] };
-    user.goals = newGoals;
-    
+    state.users[state.activeUser].goals = newGoals;
     addHistoryEntry('adjustment', 0, '', 'Metas atualizadas');
-
-    await saveUserData(state.activeUser, user);
+    saveToLocalStorage();
+    
     alert('Metas salvas com sucesso! 🎉');
+    renderAll();
     switchView('home');
 }
 
 /**
- * Salva os saldos atuais no Firestore
+ * Salva os saldos atuais
  */
-async function handleSaveBalances() {
-    if (!state.currentUser) {
-        alert('Por favor, faça login para salvar os saldos.');
-        return;
-    }
-
+function handleSaveBalances() {
     const balanceInputs = document.querySelectorAll('.balance-input');
-    const newBalances: any = {};
+    const newBalances: Record<string, number> = {};
     
     balanceInputs.forEach(input => {
         const bankId = input.getAttribute('data-bank-id') || '';
@@ -1013,39 +800,37 @@ async function handleSaveBalances() {
         newBalances[bankId] = val;
     });
 
-    const user = { ...state.users[state.activeUser] };
-    user.balances = newBalances;
-    
+    state.users[state.activeUser].balances = newBalances;
     addHistoryEntry('adjustment', 0, '', 'Saldos ajustados manualmente');
-
-    await saveUserData(state.activeUser, user);
+    saveToLocalStorage();
+    
     alert('Saldos atualizados com sucesso! 💰');
+    renderAll();
     switchView('home');
 }
 
 /**
  * Troca de aba
  */
-function switchTab(user) {
+function switchTab(user: 'malu' | 'babi') {
     if (state.activeUser === user) return;
     state.activeUser = user;
     applyTheme();
     renderAll();
     
-    (document.getElementById('amount-input') as HTMLInputElement).value = '';
-    (document.getElementById('output-amount-input') as HTMLInputElement).value = '';
-    (document.getElementById('output-bank-select') as HTMLSelectElement).value = '';
+    const amountInput = document.getElementById('amount-input') as HTMLInputElement;
+    const outputAmountInput = document.getElementById('output-amount-input') as HTMLInputElement;
+    const outputBankSelect = document.getElementById('output-bank-select') as HTMLSelectElement;
+    
+    if (amountInput) amountInput.value = '';
+    if (outputAmountInput) outputAmountInput.value = '';
+    if (outputBankSelect) outputBankSelect.value = '';
 }
 
 /**
  * Lida com a ENTRADA
  */
-async function handleAddEntry() {
-    if (!state.currentUser) {
-        alert('Por favor, faça login para salvar seus dados.');
-        return;
-    }
-
+function handleAddEntry() {
     const input = document.getElementById('amount-input') as HTMLInputElement;
     const value = parseFloat(input.value);
 
@@ -1054,8 +839,7 @@ async function handleAddEntry() {
         return;
     }
 
-    const user = { ...state.users[state.activeUser] };
-    user.balances = { ...user.balances };
+    const user = state.users[state.activeUser];
 
     PIGGY_BANKS_CONFIG.forEach(bank => {
         const share = (value * bank.percent) / 100;
@@ -1065,27 +849,23 @@ async function handleAddEntry() {
     user.totalIncome = (user.totalIncome || 0) + value;
     
     addHistoryEntry('income', value, '', `Mesada de R$ ${formatCurrency(value)} distribuída`);
-
-    await saveUserData(state.activeUser, user);
+    saveToLocalStorage();
+    renderAll();
+    
     input.value = '';
 }
 
 /**
  * Lida com a SAÍDA
  */
-async function handleOutputEntry() {
-    if (!state.currentUser) {
-        alert('Por favor, faça login para salvar seus dados.');
-        return;
-    }
-
+function handleOutputEntry() {
     const input = document.getElementById('output-amount-input') as HTMLInputElement;
     const select = document.getElementById('output-bank-select') as HTMLSelectElement;
     const value = parseFloat(input.value);
     const bankId = select.value;
 
     if (isNaN(value) || value <= 0) {
-        alert('Por favor, digite um valor maior que zero para o gasto. O sistema cuidará de subtrair o valor do cofrinho automaticamente.');
+        alert('Por favor, digite um valor maior que zero para o gasto.');
         return;
     }
 
@@ -1094,12 +874,12 @@ async function handleOutputEntry() {
         return;
     }
 
-    const user = { ...state.users[state.activeUser] };
-    user.balances = { ...user.balances };
+    const user = state.users[state.activeUser];
     const currentBalance = user.balances[bankId] || 0;
+    const bank = PIGGY_BANKS_CONFIG.find(b => b.id === bankId);
 
     if (value > currentBalance) {
-        alert(`Saldo insuficiente no cofrinho ${PIGGY_BANKS_CONFIG.find(b => b.id === bankId).name}. Saldo atual: R$ ${formatCurrency(currentBalance)}. Lembre-se de digitar o valor positivo do gasto (ex: 8.00).`);
+        alert(`Saldo insuficiente no cofrinho ${bank?.name}. Saldo atual: R$ ${formatCurrency(currentBalance)}.`);
         return;
     }
 
@@ -1107,8 +887,8 @@ async function handleOutputEntry() {
     user.totalExpenses = (user.totalExpenses || 0) + value;
     
     addHistoryEntry('expense', value, bankId, `Gasto de R$ ${formatCurrency(value)}`);
-
-    await saveUserData(state.activeUser, user);
+    saveToLocalStorage();
+    renderAll();
     
     input.value = '';
     select.value = '';
@@ -1152,14 +932,12 @@ function showModal(title: string, message: string, onConfirm: () => void) {
 /**
  * Zera todos os dados do usuário ativo
  */
-async function handleResetData() {
-    if (!state.currentUser) return;
-
+function handleResetData() {
     showModal(
         'Zerar Tudo?',
         'Tem certeza que deseja zerar todos os saldos e metas deste perfil? Esta ação não pode ser desfeita.',
-        async () => {
-            const emptyData = {
+        () => {
+            const emptyData: UserData = {
                 balances: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
                 goals: { frida: 0, bino: 0, deco: 0, edu: 0, cora: 0 },
                 totalIncome: 0,
@@ -1169,7 +947,7 @@ async function handleResetData() {
 
             state.users[state.activeUser] = emptyData;
             addHistoryEntry('reset', 0, '', 'Dados zerados completamente');
-            await saveUserData(state.activeUser, emptyData);
+            saveToLocalStorage();
             
             renderAll();
             switchView('home');
@@ -1181,11 +959,6 @@ async function handleResetData() {
  * Faz o backup dos dados em um arquivo JSON
  */
 function handleBackupData() {
-    if (!state.currentUser) {
-        alert('Faça login para baixar seus dados.');
-        return;
-    }
-
     const dataStr = JSON.stringify(state.users, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
     
@@ -1200,7 +973,7 @@ function handleBackupData() {
 /**
  * Formata moeda
  */
-function formatCurrency(value) {
+function formatCurrency(value: number): string {
     return value.toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
